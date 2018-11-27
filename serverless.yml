@@ -28,8 +28,8 @@ provider:
 
 # you can define service wide environment variables here
   environment:
-    APEX_GATEWAY_DISABLED: "false"
-    SLACK_TOKEN: "Qj9YEf9G2HEOrWRL7yB9DJDj"
+    SLACK_TOKEN: ""
+    ChannelID: ""
 
 package:
  exclude:
@@ -39,9 +39,9 @@ package:
 
 functions:
   slash:
-    handler: bin/slack
+    handler: bin/vegeta-lambda
     events:
-      - http: ANY {proxy+}
+      - sqs:
 
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
@@ -76,3 +76,4 @@ functions:
 #    Define function environment variables here
 #    environment:
 #      variable2: value2
+

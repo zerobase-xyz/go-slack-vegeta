@@ -1,71 +1,60 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/apex/gateway"
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/nlopes/slack"
+	vegeta "github.com/tsenart/vegeta/lib"
 )
 
 var (
 	slackToken = os.Getenv("SLACK_TOKEN")
+	channelID  = os.Getenv("ChannelID")
 )
 
-func main() {
-	ApexGatewayDisabled := os.Getenv("APEX_GATEWAY_DISABLED")
-	http.HandleFunc("/attack", AttackRequest)
-
-	if ApexGatewayDisabled == "true" {
-		log.Fatal(http.ListenAndServe(":3000", nil))
-	} else {
-		log.Fatal(gateway.ListenAndServe(":3000", nil))
-	}
+type Target struct {
+	URL      string        `json:"url"`
+	Method   string        `json:"method"`
+	Req      int           `json:"requests_per_seconds"`
+	Duration time.Duration `json:"duration"`
 }
 
-func AttackRequest(w http.ResponseWriter, r *http.Request) {
-	s, err := slack.SlashCommandParse(r)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if s.Token != slackToken {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+func (t *Target) Attack() (rep vegeta.Metrics) {
+	rate := vegeta.Rate{Freq: t.Req, Per: time.Second}
+	duration := t.Duration * time.Second
+	targeter := vegeta.NewStaticTargeter(vegeta.Target{
+		Method: t.Method,
+		URL:    t.URL,
+	})
+	attacker := vegeta.NewAttacker()
 
-	switch s.Command {
-	case "/attack":
-		form := strings.Split(s.Text, " ")
-		if len(form) != 4 {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
+	for res := range attacker.Attack(targeter, rate, duration, "Big Bang!") {
+		rep.Add(res)
+	}
+	rep.Close()
+
+	return rep
+}
+
+func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
+	for _, message := range sqsEvent.Records {
+		form := strings.Split(message.Body, " ")
 		req, _ := strconv.Atoi(form[2])
 		duration, _ := strconv.Atoi(form[3])
 
 		t := Target{
-			Url:      form[0],
+			URL:      form[0],
 			Method:   form[1],
 			Req:      req,
 			Duration: time.Duration(duration),
 		}
-
-		params := &slack.Msg{Text: "Start Attack"}
-		b, err := json.Marshal(params)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(b)
 		m := t.Attack()
 
 		const fmtstr = "Requests\t[total, rate]\t%d, %.2f\n" +
@@ -92,12 +81,12 @@ func AttackRequest(w http.ResponseWriter, r *http.Request) {
 
 		param := slack.PostMessageParameters{Attachments: attachments}
 		api := slack.New(slackToken)
-		_, _, _ = api.PostMessage(s.ChannelID, "攻撃完了", param)
-
-		return
-
-	default:
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		_, _, _ = api.PostMessage(channelID, "Result", param)
 	}
+
+	return nil
+}
+
+func main() {
+	lambda.Start(handler)
 }
