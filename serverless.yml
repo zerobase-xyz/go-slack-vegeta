@@ -41,7 +41,7 @@ functions:
   slash:
     handler: bin/slack
     events:
-      - sqs: arn:aws:sqs:ap-northeast-1:858026153602:vegeta
+      - sqs: 
 
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
