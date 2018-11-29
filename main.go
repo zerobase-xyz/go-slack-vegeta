@@ -45,12 +45,12 @@ func (t *Target) Attack() (rep vegeta.Metrics) {
 
 func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 	for _, message := range sqsEvent.Records {
-		form := strings.Split(message.Body, " ")
+		form := strings.Split(message.Body, " ")[2:]
 		req, _ := strconv.Atoi(form[2])
 		duration, _ := strconv.Atoi(form[3])
 
 		t := Target{
-			URL:      form[0],
+			URL:      form[0][1 : len(form[0])-1],
 			Method:   form[1],
 			Req:      req,
 			Duration: time.Duration(duration),
@@ -75,7 +75,7 @@ func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 		)
 
 		attachment := slack.Attachment{
-			Text: text,
+			Text: text + form[0],
 		}
 		attachments := []slack.Attachment{attachment}
 
