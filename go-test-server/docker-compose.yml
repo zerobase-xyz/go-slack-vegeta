@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  nginx-proxy:
+    build:
+      context: ./.deploy/nginx
+      dockerfile: Dockerfile
+    container_name: nginx-proxy
+    environment:
+      - APP_HOST=go-app
+      - APP_PORT=8000
+    ports:
+      - 8080:80
+
+  go-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8000:8000
