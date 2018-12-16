@@ -48,7 +48,10 @@ func (t *Target) Attack() (rep vegeta.Metrics) {
 
 func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 	for _, message := range sqsEvent.Records {
-		if len(strings.Split(message.Body, " ")) != 6 {
+
+		log.Print("[INFO] " + message.Body)
+
+		if len(strings.Split(message.Body, " ")) != 4 {
 			return fmt.Errorf("[ERROR] request body is strange")
 		}
 
@@ -57,7 +60,7 @@ func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 			return fmt.Errorf("[ERROR] request attributes channelid is strange")
 		}
 
-		form := strings.Split(message.Body, " ")[2:]
+		form := strings.Split(message.Body, " ")
 		req, _ := strconv.Atoi(form[2])
 		duration, _ := strconv.Atoi(form[3])
 
