@@ -1,2 +1,1 @@
-# sample-serverless
-# slackvegeta
+# go-slack-vegeta

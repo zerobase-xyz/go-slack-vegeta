@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,9 +18,9 @@ import (
 
 var (
 	slackToken = os.Getenv("SLACK_TOKEN")
-	channelID  = os.Getenv("ChannelID")
 )
 
+// Target represents is destenation to http request.
 type Target struct {
 	URL      string        `json:"url"`
 	Method   string        `json:"method"`
@@ -26,6 +28,7 @@ type Target struct {
 	Duration time.Duration `json:"duration"`
 }
 
+// Attack returns the result of executing vegeta command.
 func (t *Target) Attack() (rep vegeta.Metrics) {
 	rate := vegeta.Rate{Freq: t.Req, Per: time.Second}
 	duration := t.Duration * time.Second
@@ -40,11 +43,20 @@ func (t *Target) Attack() (rep vegeta.Metrics) {
 	}
 	rep.Close()
 
-	return rep
+	return
 }
 
 func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 	for _, message := range sqsEvent.Records {
+		if len(strings.Split(message.Body, " ")) != 6 {
+			return fmt.Errorf("[ERROR] request body is strange")
+		}
+
+		channelID, ok := message.MessageAttributes["ChannelID"]
+		if !ok {
+			return fmt.Errorf("[ERROR] request attributes channelid is strange")
+		}
+
 		form := strings.Split(message.Body, " ")[2:]
 		req, _ := strconv.Atoi(form[2])
 		duration, _ := strconv.Atoi(form[3])
@@ -55,7 +67,10 @@ func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 			Req:      req,
 			Duration: time.Duration(duration),
 		}
+
+		log.Print("[INFO] start attack")
 		m := t.Attack()
+		log.Print("[INFO] finish attack")
 
 		const fmtstr = "Requests\t[total, rate]\t%d, %.2f\n" +
 			"Duration\t[total, attack, wait]\t%s, %s, %s\n" +
@@ -74,14 +89,31 @@ func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
 			m.Success*100,
 		)
 
-		attachment := slack.Attachment{
-			Text: text + form[0],
+		codes := make([]string, 0, len(m.StatusCodes))
+		for code := range m.StatusCodes {
+			codes = append(codes, code)
 		}
+
+		sort.Strings(codes)
+
+		for _, code := range codes {
+			count := m.StatusCodes[code]
+			text = text + fmt.Sprintf("%s:%d  ", code, count)
+		}
+
+		log.Print("[INFO] Attack Result\n" + text)
+
+		attachment := slack.Attachment{
+			Text: text,
+		}
+
 		attachments := []slack.Attachment{attachment}
 
 		param := slack.PostMessageParameters{Attachments: attachments}
 		api := slack.New(slackToken)
-		_, _, _ = api.PostMessage(channelID, "Result", param)
+		if _, _, err := api.PostMessage(*channelID.StringValue, "Target URL: "+form[0], param); err != nil {
+			return fmt.Errorf("[ERROR] request attributes channelid is strange")
+		}
 	}
 
 	return nil
